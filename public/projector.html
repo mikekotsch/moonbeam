@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoonBeam · Beamer</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: system-ui, sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  body.idle { cursor: none; }
+  #hint {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    color: #888; font-size: 14px; background: #111; padding: 8px 14px; border-radius: 8px;
+    transition: opacity .4s; pointer-events: none;
+  }
+  body.idle #hint { opacity: 0; }
+  #status { position: fixed; top: 10px; right: 12px; width: 10px; height: 10px; border-radius: 50%; background: #c33; }
+  #status.ok { background: #2a2; opacity: .35; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="status" title="connection"></div>
+<div id="hint">Click or press <b>F</b> for fullscreen · <b>C</b> calibrate · <b>A</b> all holds · <b>Esc</b> back to problem</div>
+<script type="module">
+import { homography, holdToUV, ALL_HOLDS, ROWS, COLS } from '/board.js';
+
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+let S = null;               // latest server snapshot
+let dragging = null;        // corner key while dragging
+let dpr = 1;
+
+const COLORS = { start: '#00ff5a', middle: '#2f8bff', finish: '#ff2d2d' };
+
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  cv.width = innerWidth * dpr; cv.height = innerHeight * dpr;
+  draw();
+}
+addEventListener('resize', resize);
+
+function cornersPx() {
+  const c = S.config.corners, W = innerWidth, H = innerHeight;
+  const px = k => [c[k][0] * W, c[k][1] * H];
+  return { tl: px('tl'), tr: px('tr'), br: px('br'), bl: px('bl') };
+}
+
+function draw() {
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, innerWidth, innerHeight);
+  if (!S || S.mode === 'blank') return;
+
+  const q = cornersPx();
+  const H = homography(q);
+  const P = h => { const { u, v } = holdToUV(h); return H(u, v); };
+  // local hold spacing in px around a hold (projective, so it varies across the board)
+  const spacing = h => {
+    const { u, v } = holdToUV(h), du = 0.1, dv = 1 / (ROWS - 1);
+    const a = H(u - du / 2, v), b = H(u + du / 2, v), c = H(u, v - dv / 2), d = H(u, v + dv / 2);
+    return (Math.hypot(b[0] - a[0], b[1] - a[1]) + Math.hypot(d[0] - c[0], d[1] - c[1])) / 2;
+  };
+  ctx.globalAlpha = S.config.brightness;
+
+  const ring = (h, color) => {
+    const [x, y] = P(h), s = spacing(h);
+    ctx.beginPath();
+    ctx.arc(x, y, s * S.config.radius, 0, Math.PI * 2);
+    ctx.strokeStyle = color; ctx.lineWidth = s * S.config.thickness; ctx.stroke();
+  };
+
+  if (S.mode === 'calibrate') {
+    // grid lines + every hold position, so you can line it up against the real holds
+    ctx.strokeStyle = '#444'; ctx.lineWidth = 1;
+    for (let i = 0; i <= 10; i++) { line(H(i / 10, 0), H(i / 10, 1)); }
+    for (let j = 0; j < ROWS; j++) { line(H(0, j / (ROWS - 1)), H(1, j / (ROWS - 1))); }
+    for (const h of ALL_HOLDS) { const [x, y] = P(h); dot(x, y, 3, '#fff'); }
+    if (S.config.showCoords) coords(H, spacing, null);
+    const labels = { tl: 'A18', tr: 'K18', br: 'K1', bl: 'A1' };
+    for (const k in q) {
+      const [x, y] = q[k];
+      ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.strokeStyle = '#ffd400'; ctx.lineWidth = 3; ctx.stroke();
+      dot(x, y, 3, '#ffd400');
+      ctx.fillStyle = '#ffd400'; ctx.font = 'bold 16px system-ui';
+      ctx.textAlign = 'center'; if (!S.config.showCoords) ctx.fillText(labels[k], x, y + (k[0] === 't' ? -24 : 36));
+    }
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  if (S.mode === 'all') { for (const h of ALL_HOLDS) ring(h, '#ffffff'); if (S.config.showCoords) coords(H, spacing, null); ctx.globalAlpha = 1; return; }
+
+  const p = S.problem;
+  if (!p) return;
+  p.middle.forEach(h => ring(h, COLORS.middle));
+  p.start.forEach(h => ring(h, COLORS.start));
+  p.finish.forEach(h => ring(h, COLORS.finish));
+  if (S.config.showCoords) coords(H, spacing, [...p.start, ...p.middle, ...p.finish]);
+
+  if (S.config.showLabel) {
+    const above = (S.config.showCoords ? S.config.coordOffset + 0.9 : 0.9);
+    const [x, y] = H(0.5, -above / (ROWS - 1));
+    const s = spacing('F18');
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `600 ${Math.max(14, s * 0.45)}px system-ui`;
+    ctx.fillText(`${p.name} · ${p.grade}${p.benchmark ? ' · ★' : ''}`, x, y);
+  }
+  ctx.globalAlpha = 1;
+}
+// Column letters along the top, row numbers down both sides.
+// `used` = holds of the current problem: their letters/numbers are drawn brighter so you can read positions quickly.
+function coords(H, spacing, used) {
+  const off = S.config.coordOffset;              // distance from the outer holds, in hold spacings
+  const du = off / (COLS - 1), dv = off / (ROWS - 1);
+  const usedCols = new Set((used || []).map(h => h[0]));
+  const usedRows = new Set((used || []).map(h => h.slice(1)));
+  const s = spacing('F9');
+  ctx.font = `600 ${Math.max(12, s * 0.38)}px system-ui`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const col = on => used ? (on ? '#ffffff' : '#5a5a5a') : '#9a9a9a';
+  for (let c = 0; c < COLS; c++) {
+    const L = String.fromCharCode(65 + c);
+    const [x, y] = H(c / (COLS - 1), -dv);
+    ctx.fillStyle = col(usedCols.has(L)); ctx.fillText(L, x, y);
+  }
+  for (let r = 1; r <= ROWS; r++) {
+    const v = (ROWS - r) / (ROWS - 1);
+    ctx.fillStyle = col(usedRows.has(String(r)));
+    const [xl, yl] = H(-du, v); ctx.fillText(r, xl, yl);
+    const [xr, yr] = H(1 + du, v); ctx.fillText(r, xr, yr);
+  }
+}
+function line(a, b) { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }
+function dot(x, y, r, c) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fillStyle = c; ctx.fill(); }
+
+// ---- live state from the server ----
+function connect() {
+  const es = new EventSource('/events');
+  const st = document.getElementById('status');
+  es.onopen = () => st.classList.add('ok');
+  es.onmessage = e => { if (!dragging) { S = JSON.parse(e.data); draw(); } };
+  es.onerror = () => st.classList.remove('ok'); // EventSource reconnects by itself
+}
+connect();
+resize();
+
+const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+// ---- corner dragging (calibration) ----
+cv.addEventListener('pointerdown', e => {
+  if (!S || S.mode !== 'calibrate') { document.documentElement.requestFullscreen?.(); return; }
+  const q = cornersPx();
+  let best = null, bd = 60;
+  for (const k in q) { const d = Math.hypot(q[k][0] - e.clientX, q[k][1] - e.clientY); if (d < bd) { bd = d; best = k; } }
+  if (best) { dragging = best; cv.setPointerCapture(e.pointerId); }
+});
+cv.addEventListener('pointermove', e => {
+  wake();
+  if (!dragging) return;
+  S.config.corners[dragging] = [e.clientX / innerWidth, e.clientY / innerHeight];
+  draw();
+});
+cv.addEventListener('pointerup', () => {
+  if (!dragging) return;
+  post('/api/config', { corners: S.config.corners });
+  dragging = null;
+});
+
+// ---- keyboard ----
+addEventListener('keydown', e => {
+  wake();
+  const k = e.key.toLowerCase();
+  if (k === 'f') document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+  if (k === 'c') post('/api/mode', { mode: S?.mode === 'calibrate' ? 'problem' : 'calibrate' });
+  if (k === 'a') post('/api/mode', { mode: S?.mode === 'all' ? 'problem' : 'all' });
+  if (k === 'escape') post('/api/mode', { mode: 'problem' });
+});
+
+// hide cursor + hint when idle
+let idleT;
+function wake() { document.body.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => document.body.classList.add('idle'), 2500); }
+wake();
+</script>
+</body>
+</html>

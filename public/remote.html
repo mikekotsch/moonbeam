@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e0f12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>MoonBeam</title>
+<style>
+  :root {
+    --bg: #0e0f12; --panel: #17191e; --panel2: #1f2229; --line: #2a2e37;
+    --text: #eceef2; --muted: #8b919e; --accent: #ffd400;
+    --start: #00d65a; --middle: #2f8bff; --finish: #ff3b3b;
+    --r: 14px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.35 system-ui, -apple-system, sans-serif; }
+  body { padding: env(safe-area-inset-top) 0 calc(76px + env(safe-area-inset-bottom)); }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  header { display: flex; align-items: center; gap: 8px; padding: 14px 16px 6px; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .02em; }
+  header h1 span { color: var(--accent); }
+  #conn { width: 8px; height: 8px; border-radius: 50%; background: #c33; margin-left: auto; }
+  #conn.ok { background: #2c2; }
+  #conn-label { color: var(--muted); font-size: 12px; }
+  main { padding: 0 16px; }
+  .view { display: none; } .view.active { display: block; }
+
+  /* now showing */
+  .now { background: var(--panel); border-radius: var(--r); padding: 12px; display: grid; grid-template-columns: 96px minmax(0,1fr); gap: 12px; margin-top: 8px; }
+  .now svg { width: 96px; height: auto; display: block; background: #0a0b0d; border-radius: 8px; }
+  .now h2 { margin: 0 0 4px; font-size: 18px; line-height: 1.2; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .grade { display: inline-block; font-weight: 700; font-size: 13px; padding: 2px 7px; border-radius: 6px; background: var(--panel2); color: var(--text); }
+  .bench { color: var(--accent); font-weight: 700; }
+  .holds { margin-top: 8px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .holds b { font-weight: 600; } .holds .s { color: var(--start); } .holds .m { color: var(--middle); } .holds .f { color: var(--finish); }
+  .controls { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 8px; margin-top: 10px; }
+  .btn { border: 1px solid var(--line); background: var(--panel2); border-radius: 12px; padding: 12px 10px; min-height: 48px; font-weight: 600; }
+  .btn.primary { background: var(--accent); color: #111; border-color: var(--accent); }
+  .btn:active { transform: scale(.98); }
+
+  /* filters */
+  .filters { margin-top: 14px; display: grid; gap: 8px; }
+  .search { width: 100%; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  select { padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); min-height: 44px; }
+  .chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 8px 12px; font-size: 13px; min-height: 36px; }
+  .chip[aria-pressed="true"] { background: var(--text); color: #111; border-color: var(--text); }
+  .count { color: var(--muted); font-size: 12px; margin: 10px 2px 4px; }
+
+  /* list */
+  ul.list { list-style: none; margin: 0; padding: 0; }
+  ul.list li button { width: 100%; text-align: left; display: grid; grid-template-columns: 52px minmax(0,1fr) auto; gap: 10px; align-items: center;
+    background: none; border: 0; border-bottom: 1px solid var(--line); padding: 12px 2px; min-height: 56px; }
+  ul.list li.current button { background: linear-gradient(90deg, rgba(255,212,0,.12), transparent); }
+  ul.list .name { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  ul.list .rep { color: var(--muted); font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+  .more { width: 100%; margin: 12px 0; }
+
+  /* beamer setup */
+  .card { background: var(--panel); border-radius: var(--r); padding: 14px; margin-top: 12px; }
+  .card h3 { margin: 0 0 10px; font-size: 14px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .seg button { padding: 10px 4px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel2); font-size: 13px; min-height: 44px; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 700; }
+  .pad { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); gap: 6px; justify-content: center; margin: 12px 0 4px; }
+  .pad button { border-radius: 12px; border: 1px solid var(--line); background: var(--panel2); font-size: 20px; }
+  .pad .mid { font-size: 12px; color: var(--muted); }
+  label.slider { display: grid; grid-template-columns: 90px 1fr 40px; align-items: center; gap: 10px; margin: 10px 0; font-size: 14px; }
+  label.slider output { color: var(--muted); font-size: 12px; text-align: right; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .help { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+
+  /* tabbar */
+  nav { position: fixed; z-index: 10; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1fr 1fr; background: rgba(14,15,18,.94);
+    backdrop-filter: blur(10px); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+  nav button { background: none; border: 0; padding: 14px; min-height: 60px; color: var(--muted); font-weight: 600; }
+  nav button[aria-selected="true"] { color: var(--accent); }
+  .empty { color: var(--muted); padding: 30px 0; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Moon<span>Beam</span></h1>
+  <span id="conn-label">connecting…</span><span id="conn"></span>
+</header>
+
+<main>
+  <!-- PROBLEMS -->
+  <section class="view active" id="v-problems">
+    <div class="now" id="now">
+      <svg id="mini" viewBox="0 0 110 180" aria-hidden="true"></svg>
+      <div>
+        <h2 id="now-name">Nothing projected</h2>
+        <div class="meta" id="now-meta">Pick a problem below</div>
+        <div class="holds" id="now-holds"></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="btn" id="b-back" aria-label="Previous problem">‹ Back</button>
+      <button class="btn primary" id="b-random">Random</button>
+      <button class="btn" id="b-next" aria-label="Next problem in list">Next ›</button>
+    </div>
+
+    <div class="filters">
+      <input class="search" id="q" type="search" placeholder="Search name or setter" autocomplete="off">
+      <div class="row">
+        <select id="gmin" aria-label="Minimum grade"></select>
+        <span class="meta">to</span>
+        <select id="gmax" aria-label="Maximum grade"></select>
+        <select id="sort" aria-label="Sort by" style="margin-left:auto">
+          <option value="repeats">Most repeats</option>
+          <option value="grade">Easiest first</option>
+          <option value="hardest">Hardest first</option>
+          <option value="newest">Newest</option>
+          <option value="name">A–Z</option>
+        </select>
+      </div>
+      <div class="row" id="chips">
+        <button class="chip" id="bench" aria-pressed="false">Benchmarks</button>
+        <button class="chip rep" data-v="0" aria-pressed="true">Any repeats</button>
+        <button class="chip rep" data-v="10" aria-pressed="false">10+</button>
+        <button class="chip rep" data-v="100" aria-pressed="false">100+</button>
+        <button class="chip rep" data-v="1000" aria-pressed="false">1000+</button>
+      </div>
+    </div>
+    <div class="count" id="count"></div>
+    <ul class="list" id="list"></ul>
+    <button class="btn more" id="more" hidden>Load more</button>
+  </section>
+
+  <!-- BEAMER SETUP -->
+  <section class="view" id="v-setup">
+    <div class="card">
+      <h3>Beamer shows</h3>
+      <div class="seg" id="modes">
+        <button data-mode="problem">Problem</button>
+        <button data-mode="all">All holds</button>
+        <button data-mode="calibrate">Calibrate</button>
+        <button data-mode="blank">Off</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Align corners</h3>
+      <p class="help">Switch to <b>Calibrate</b>, then move each yellow ring onto the centre of that hold. You can also drag the rings with the laptop's mouse.</p>
+      <div class="seg" id="corners" style="margin-top:10px">
+        <button data-c="tl" aria-pressed="true">A18</button>
+        <button data-c="tr">K18</button>
+        <button data-c="bl">A1</button>
+        <button data-c="br">K1</button>
+      </div>
+      <div class="pad">
+        <span></span><button data-d="0,-1" aria-label="Up">↑</button><span></span>
+        <button data-d="-1,0" aria-label="Left">←</button>
+        <button class="mid" id="step" aria-label="Step size">fine</button>
+        <button data-d="1,0" aria-label="Right">→</button>
+        <span></span><button data-d="0,1" aria-label="Down">↓</button><span></span>
+      </div>
+      <p class="help" style="text-align:center">Tap the middle to switch between fine and coarse steps.</p>
+    </div>
+
+    <div class="card">
+      <h3>Look</h3>
+      <label class="slider">Ring size <input type="range" id="radius" min="0.2" max="0.7" step="0.01"><output></output></label>
+      <label class="slider">Thickness <input type="range" id="thickness" min="0.04" max="0.4" step="0.01"><output></output></label>
+      <label class="slider">Brightness <input type="range" id="brightness" min="0.2" max="1" step="0.05"><output></output></label>
+      <label class="slider">Label gap <input type="range" id="coordOffset" min="0.3" max="2" step="0.05"><output></output></label>
+      <div class="row" style="justify-content:space-between;margin-top:8px">
+        <button class="chip" id="label" aria-pressed="true">Show name on wall</button>
+        <button class="chip" id="coords" aria-pressed="true">Letters &amp; numbers</button>
+        <button class="chip" id="reset">Reset calibration</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<nav role="tablist">
+  <button role="tab" aria-selected="true" data-view="v-problems">Problems</button>
+  <button role="tab" aria-selected="false" data-view="v-setup">Beamer setup</button>
+</nav>
+
+<script>
+const GRADES = ['6A','6A+','6B','6B+','6C','6C+','7A','7A+','7B','7B+','7C','7C+','8A','8A+','8B','8B+'];
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const post = (url, body) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// ---------- remembered filters (per phone) ----------
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('mb.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('mb.' + k, JSON.stringify(v)); } catch {} },
+};
+const F = Object.assign({ q: '', gmin: '6B+', gmax: '7B', sort: 'repeats', bench: false, minrep: 10 }, store.get('filters', {}));
+
+for (const id of ['gmin', 'gmax']) $('#' + id).innerHTML = GRADES.map(g => `<option>${g}</option>`).join('');
+$('#q').value = F.q; $('#gmin').value = F.gmin; $('#gmax').value = F.gmax; $('#sort').value = F.sort;
+$('#bench').setAttribute('aria-pressed', F.bench);
+$$('.chip.rep').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.v) === F.minrep)));
+
+// ---------- list ----------
+let items = [], total = 0, current = null, loading = false;
+
+async function load(reset = true) {
+  if (loading) return; loading = true;
+  store.set('filters', F);
+  const params = new URLSearchParams({ q: F.q, gmin: F.gmin, gmax: F.gmax, sort: F.sort, bench: F.bench ? 1 : 0, minrep: F.minrep, offset: reset ? 0 : items.length, limit: 60 });
+  const r = await fetch('/api/problems?' + params).then(r => r.json()).finally(() => loading = false);
+  total = r.total; items = reset ? r.items : items.concat(r.items);
+  renderList();
+}
+function renderList() {
+  $('#count').textContent = `${total.toLocaleString()} problems`;
+  $('#list').innerHTML = items.length ? items.map(p => `
+    <li class="${current && current.id === p.id ? 'current' : ''}">
+      <button data-id="${p.id}">
+        <span class="grade">${p.grade}</span>
+        <span><span class="name">${esc(p.name)}${p.benchmark ? ' <span class="bench">★</span>' : ''}</span><span class="meta">${esc(p.setter || '')}</span></span>
+        <span class="rep">${(p.repeats || 0).toLocaleString()}<br>repeats</span>
+      </button>
+    </li>`).join('') : '<li class="empty">No problems match these filters.</li>';
+  $('#more').hidden = items.length >= total;
+}
+$('#list').addEventListener('click', e => { const b = e.target.closest('button[data-id]'); if (b) show(b.dataset.id); });
+$('#more').onclick = () => load(false);
+
+let qT;
+$('#q').addEventListener('input', e => { F.q = e.target.value; clearTimeout(qT); qT = setTimeout(load, 200); });
+for (const id of ['gmin', 'gmax', 'sort']) $('#' + id).addEventListener('change', e => { F[id] = e.target.value; load(); });
+$('#bench').onclick = e => { F.bench = !F.bench; e.target.setAttribute('aria-pressed', F.bench); load(); };
+$$('.chip.rep').forEach(b => b.onclick = () => {
+  F.minrep = Number(b.dataset.v);
+  $$('.chip.rep').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  load();
+});
+
+// ---------- projecting ----------
+const show = id => post('/api/show', { id: Number(id) });
+$('#b-back').onclick = () => post('/api/back', {});
+$('#b-random').onclick = async () => {
+  const params = new URLSearchParams({ q: F.q, gmin: F.gmin, gmax: F.gmax, bench: F.bench ? 1 : 0, minrep: F.minrep, random: 1 });
+  const r = await fetch('/api/problems?' + params).then(r => r.json());
+  if (r.items[0]) show(r.items[0].id);
+};
+$('#b-next').onclick = async () => {
+  let i = current ? items.findIndex(p => p.id === current.id) : -1;
+  if (i + 1 >= items.length && items.length < total) await load(false);
+  const n = items[i + 1] || items[0];
+  if (n) show(n.id);
+};
+
+function renderNow(p) {
+  const holdsSvg = (list, color) => list.map(h => {
+    const c = h.charCodeAt(0) - 65, r = parseInt(h.slice(1), 10);
+    return `<circle cx="${5 + c * 10}" cy="${5 + (18 - r) * 10}" r="4" fill="none" stroke="${color}" stroke-width="1.8"/>`;
+  }).join('');
+  let dots = '';
+  for (let r = 1; r <= 18; r++) for (let c = 0; c < 11; c++) dots += `<circle cx="${5 + c * 10}" cy="${5 + (18 - r) * 10}" r=".9" fill="#3a3f4a"/>`;
+  $('#mini').innerHTML = dots + (p ? holdsSvg(p.middle, 'var(--middle)') + holdsSvg(p.start, 'var(--start)') + holdsSvg(p.finish, 'var(--finish)') : '');
+  if (!p) return;
+  $('#now-name').innerHTML = esc(p.name) + (p.benchmark ? ' <span class="bench" title="Benchmark">★</span>' : '');
+  $('#now-meta').innerHTML = `<span class="grade">${p.grade}</span> ${p.v} · ${esc(p.setter || 'unknown')} · ${(p.repeats || 0).toLocaleString()} repeats`;
+  $('#now-holds').innerHTML = `<b class="s">Start</b> ${p.start.join(' ')}<br><b class="m">Hands</b> ${p.middle.join(' ')}<br><b class="f">Top</b> ${p.finish.join(' ')}`;
+}
+
+// ---------- beamer setup ----------
+let S = null, corner = 'tl', coarse = false;
+$$('#modes button').forEach(b => b.onclick = () => post('/api/mode', { mode: b.dataset.mode }));
+$$('#corners button').forEach(b => b.onclick = () => {
+  corner = b.dataset.c;
+  $$('#corners button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+});
+$('#step').onclick = e => { coarse = !coarse; e.target.textContent = coarse ? 'coarse' : 'fine'; };
+$$('.pad button[data-d]').forEach(b => b.onclick = () => {
+  const [dx, dy] = b.dataset.d.split(',').map(Number), s = coarse ? 0.01 : 0.0015;
+  post('/api/config', { nudge: { corner, dx: dx * s, dy: dy * s } });
+});
+for (const id of ['radius', 'thickness', 'brightness', 'coordOffset']) {
+  const el = $('#' + id);
+  el.addEventListener('input', () => { el.nextElementSibling.textContent = Math.round(el.value * 100) + '%'; post('/api/config', { [id]: Number(el.value) }); });
+}
+$('#label').onclick = () => post('/api/config', { showLabel: !S.config.showLabel });
+$('#coords').onclick = () => post('/api/config', { showCoords: !S.config.showCoords });
+$('#reset').onclick = () => { if (confirm('Reset corners and ring settings to defaults?')) post('/api/config', { reset: true }); };
+
+function renderSetup() {
+  $$('#modes button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === S.mode)));
+  for (const id of ['radius', 'thickness', 'brightness', 'coordOffset']) {
+    const el = $('#' + id);
+    if (document.activeElement !== el) { el.value = S.config[id]; el.nextElementSibling.textContent = Math.round(S.config[id] * 100) + '%'; }
+  }
+  $('#label').setAttribute('aria-pressed', String(S.config.showLabel));
+  $('#coords').setAttribute('aria-pressed', String(S.config.showCoords));
+}
+
+// ---------- tabs ----------
+$$('nav button').forEach(b => b.onclick = () => {
+  $$('nav button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+  $$('.view').forEach(v => v.classList.toggle('active', v.id === b.dataset.view));
+  scrollTo(0, 0);
+});
+
+// ---------- live sync ----------
+const es = new EventSource('/events');
+es.onopen = () => { $('#conn').classList.add('ok'); $('#conn-label').textContent = 'connected'; };
+es.onerror = () => { $('#conn').classList.remove('ok'); $('#conn-label').textContent = 'reconnecting…'; };
+es.onmessage = e => {
+  S = JSON.parse(e.data);
+  current = S.problem;
+  renderNow(current); renderSetup(); renderList();
+};
+
+renderNow(null);
+load();
+</script>
+</body>
+</html>
